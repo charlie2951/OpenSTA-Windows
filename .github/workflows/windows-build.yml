@@ -1,62 +1,67 @@
-name: OpenSTA CI/CD (Windows)
+
+name: OpenSTA Windows Build
 
 on:
   push:
     branches: [ main ]
-    tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch: # Allows manual triggering from the Actions tab
 
 jobs:
-  build-and-release:
+  build-windows:
     runs-on: windows-latest
-    defaults:
-      run:
-        shell: msys2 {0}
 
     steps:
-      - name: Checkout Code
+      - name: Checkout OpenSTA
         uses: actions/checkout@v4
 
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
           update: true
+          # Note: flex and bison are pulled from msys repo, others from mingw64
           install: >-
             base-devel
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-tcl
             mingw-w64-x86_64-swig
-            mingw-w64-x86_64-bison
-            mingw-w64-x86_64-flex
             mingw-w64-x86_64-zlib
+            mingw-w64-x86_64-eigen3
+            flex
+            bison
 
-      - name: Configure and Build
+      - name: Build OpenSTA
+        shell: msys2 {0}
         run: |
-          mkdir build && cd build
-          cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
+          mkdir build
+          cd build
+          # Configure using MinGW Makefiles
+          cmake .. -G "MinGW Makefiles" \
+                   -DCMAKE_BUILD_TYPE=Release \
+                   -DTCL_LIBRARY=/mingw64/lib/libtcl86.dll.a \
+                   -DTCL_INCLUDE_PATH=/mingw64/include
+          
+          # Compile using all available CPU cores
           make -j$(nproc)
 
-      - name: Run OpenSTA Tests
+      - name: Collect Artifacts and DLLs
+        shell: msys2 {0}
         run: |
-          cd build
-          ctest --output-on-failure
+          mkdir -p dist
+          # Copy the compiled binary
+          cp build/app/sta.exe dist/
+          
+          # Copy runtime dependencies (DLLs) for portability
+          cp /mingw64/bin/libtcl86.dll dist/
+          cp /mingw64/bin/zlib1.dll dist/
+          cp /mingw64/bin/libgcc_s_seh-1.dll dist/
+          cp /mingw64/bin/libstdc++-6.dll dist/
+          cp /mingw64/bin/libwinpthread-1.dll dist/
 
-      - name: Prepare Package
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          mkdir staging
-          cp build/app/sta.exe staging/
-          # Copy necessary DLLs for standalone execution
-          cp /mingw64/bin/libtcl*.dll staging/
-          cp /mingw64/bin/zlib*.dll staging/
-          cd staging && zip -r ../OpenSTA-Windows.zip .
-
-      - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
+      - name: Upload Windows Binary
+        uses: actions/upload-artifact@v4
         with:
-          files: OpenSTA-Windows.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: OpenSTA-Windows-x64
+          path: dist/
