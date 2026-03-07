@@ -19,9 +19,11 @@ jobs:
     # Install vcpkg with fixed version
     - name: Setup vcpkg
       uses: lukka/run-vcpkg@v11
-      with:
-        vcpkgGitCommitId: 7c3e6c4f1e5a3c8e5d9b6c6c1b2a45e9c4e0f8f1
-
+      
+    - name: Install dependencies
+      run: |
+       vcpkg install tcl:x64-windows
+       vcpkg install zlib:x64-windows
 
     - name: Install dependencies
       run: |
