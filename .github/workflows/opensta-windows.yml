@@ -1,0 +1,63 @@
+name: Build OpenSTA Windows
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+
+    runs-on: windows-latest
+
+    steps:
+
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+
+    # Install vcpkg with fixed version
+    - name: Setup vcpkg
+      uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgGitCommitId: 2024.02.14
+
+
+    - name: Install dependencies
+      run: |
+        vcpkg install tcl:x64-windows
+        vcpkg install zlib:x64-windows
+
+
+    - name: Configure CMake
+      run: |
+        cmake -S . -B build `
+          -DCMAKE_BUILD_TYPE=Release `
+          -DCMAKE_TOOLCHAIN_FILE=${env:VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake `
+          -DVCPKG_TARGET_TRIPLET=x64-windows
+
+
+    - name: Build OpenSTA
+      run: |
+        cmake --build build --config Release
+
+
+    - name: Prepare package
+      run: |
+        mkdir dist
+        copy build\Release\sta.exe dist\
+
+        copy $env:VCPKG_ROOT\installed\x64-windows\bin\tcl*.dll dist\
+        copy $env:VCPKG_ROOT\installed\x64-windows\bin\zlib*.dll dist\
+
+
+    - name: Test OpenSTA
+      run: |
+        dist\sta.exe -help
+
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: opensta-windows
+        path: dist
